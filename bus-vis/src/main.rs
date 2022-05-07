@@ -1,71 +1,56 @@
 use std::{io, thread, time::Duration};
 use tui::{
-    backend::CrosstermBackend,
-    widgets::{Widget, GraphType, Dataset, Chart, Block, Borders},
-    layout::{Layout, Constraint, Direction},
-    Terminal,
-    symbols,
-    style::Style,
+  backend::CrosstermBackend,
+  widgets::{Widget, GraphType, Dataset, Chart, Block, Borders},
+  layout::{Layout, Constraint, Direction},
+  Terminal,
+  symbols,
+  style::Style,
 };
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+  event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+  execute,
+  terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use serde_json::Value;
 
-fn main() -> Result<(), io::Error> {
-    use tui::widgets::*;
-    use tui::text::*;
-    use tui::style::*;
-    // setup terminal
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+mod query;
 
-    let datasets = vec![
-    Dataset::default()
-        .name("data1")
-        .marker(symbols::Marker::Dot)
-        .graph_type(GraphType::Scatter)
-        .style(Style::default().fg(Color::Cyan))
-        .data(&[(0.0, 5.0), (1.0, 6.0), (1.5, 6.434)]),
-    Dataset::default()
-        .name("data2")
-        .marker(symbols::Marker::Braille)
-        .graph_type(GraphType::Line)
-        .style(Style::default().fg(Color::Magenta))
-        .data(&[(4.0, 5.0), (5.0, 8.0), (7.66, 13.5)]),
-    ];
+#[derive(Debug, Clone)]
+struct BusInfo {
+  route: query::Routes,
+  lat: f64,
+  long: f64,
+  vehicle_id: String,
+}
 
-    let x = Chart::new(datasets)
-        .block(Block::default().title("Chart"))
-        .x_axis(Axis::default()
-            .title(Span::styled("X Axis", Style::default().fg(Color::Red)))
-            .style(Style::default().fg(Color::White))
-            .bounds([0.0, 10.0])
-            .labels(["0.0", "5.0", "10.0"].iter().cloned().map(Span::from).collect()))
-        .y_axis(Axis::default()
-            .title(Span::styled("Y Axis", Style::default().fg(Color::Red)))
-            .style(Style::default().fg(Color::White))
-            .bounds([0.0, 10.0])
-            .labels(["0.0", "5.0", "10.0"].iter().cloned().map(Span::from).collect()));
+fn unpack_vehicle(vehicle: &Value) -> BusInfo {
+  match vehicle {
+    Value::Object(obj) => {
+      BusInfo {
+        route: obj.get("rt").unwrap().as_str().unwrap().into(),
+        lat: obj.get("lat").unwrap().as_str().unwrap().parse::<f64>().unwrap(),
+        long: obj.get("lon").unwrap().as_str().unwrap().parse::<f64>().unwrap(),
+        vehicle_id: obj.get("vid").unwrap().as_str().unwrap().into(),
+      }
+    }
+    _ => panic!("Expected an Object"),
+  }
+}
 
-    terminal.draw(|f| {
-        let size = f.size();
-        f.render_widget(x, size);
-    })?;
-    thread::sleep(Duration::from_millis(5000));
-
-    // restore terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
-
-    Ok(())
+fn main() {
+  let buses = query::request(query::Routes::BUS61A).unwrap();
+  // extract all the long,lat from buses
+  let buses = match buses {
+    Value::Object(x) => x,
+    _ => panic!("Expected an object"),
+  };
+  let buses = buses.get("bustime-response").unwrap();
+  let buses = match buses {
+    Value::Object(x) => x,
+    _ => panic!("Expected an object"),
+  };
+  let buses = buses.get("vehicle").unwrap();
+  let bus_arr = buses.as_array().unwrap().iter().map(|x| unpack_vehicle(x)).collect::<Vec<BusInfo>>();
+  println!("{:#?}", bus_arr);
 }
