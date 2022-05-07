@@ -1,6 +1,3 @@
-
-use std::collections::HashMap;
-
 use reqwest;
 
 // query a web endpoint for bus data

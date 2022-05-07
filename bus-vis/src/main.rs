@@ -1,7 +1,7 @@
 use std::{io, thread, time::Duration};
 use tui::{
   backend::CrosstermBackend,
-  widgets::{Widget, GraphType, Dataset, Chart, Block, Borders},
+  widgets::{Widget, GraphType, Dataset, Chart, Block, Borders, canvas::{Canvas}},
   layout::{Layout, Constraint, Direction},
   Terminal,
   symbols,
@@ -38,7 +38,7 @@ fn unpack_vehicle(vehicle: &Value) -> BusInfo {
   }
 }
 
-fn main() {
+fn main() -> Result<(), io::Error> {
   let buses = query::request(query::Routes::BUS61A).unwrap();
   // extract all the long,lat from buses
   let buses = match buses {
@@ -53,4 +53,50 @@ fn main() {
   let buses = buses.get("vehicle").unwrap();
   let bus_arr = buses.as_array().unwrap().iter().map(|x| unpack_vehicle(x)).collect::<Vec<BusInfo>>();
   println!("{:#?}", bus_arr);
+
+
+  // Plot lat/long onto a map in tui
+
+  let stdout = io::stdout();
+  let backend = CrosstermBackend::new(stdout);
+  let mut terminal = Terminal::new(backend)?;
+
+  // let canvas = 
+  //   Canvas::default()
+  //     .block(Block::default().borders(Borders::ALL).title("World"))
+  //     .paint(|ctx| {
+  //       ctx.draw(&Map {
+  //           color: Color::White,
+  //           resolution: MapResolution::High,
+  //       });
+  //       ctx.print(
+  //           app.x,
+  //           -app.y,
+  //           Span::styled("You are here", Style::default().fg(Color::Yellow)),
+  //       );
+  //   })
+  //   .x_bounds([-180.0, 180.0])
+  //   .y_bounds([-90.0, 90.0]);
+  
+  terminal.draw(|f| {
+    let size = f.size();
+      let block = Block::default()
+          .title("Block")
+          .borders(Borders::ALL);
+      f.render_widget(block, size);
+  })?;
+
+  thread::sleep(Duration::from_millis(5000));
+
+  // restore terminal
+  disable_raw_mode()?;
+  execute!(
+      terminal.backend_mut(),
+      LeaveAlternateScreen,
+      DisableMouseCapture
+  )?;
+  terminal.show_cursor()?;
+  
+  Ok(())
+
 }
